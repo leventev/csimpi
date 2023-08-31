@@ -1,12 +1,23 @@
+use clap::{self, Parser};
 use std::{
+    fmt::Debug,
     io::prelude::*,
     net::{TcpListener, TcpStream},
 };
 
 use csimpi_protocol::{PacketError, PacketPayload};
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    address: String,
+}
+
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:1234").unwrap();
+    let args = Args::parse();
+    assert!(!args.address.is_empty());
+    let listener = TcpListener::bind(args.address).unwrap();
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         handle_connection(stream).unwrap();

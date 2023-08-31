@@ -1,6 +1,18 @@
+use clap::Parser;
 use std::{io::Write, net::TcpStream};
 
 use csimpi_protocol::{PacketError, PacketPayload};
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+
+struct Args {
+    #[arg(long)]
+    address: String,
+
+    #[arg(long)]
+    username: String,
+}
 
 #[derive(Debug)]
 enum NetworkError {
@@ -12,12 +24,13 @@ enum NetworkError {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let address = args.get(1).expect("Address not specified");
-    let username = args.get(2).expect("Username not specified");
-    let stream = connect(address, username).expect("Failed to connect to server");
+    let args = Args::parse();
 
-    println!("successfully connected to {}", address);
+    assert!(!args.address.is_empty());
+    assert!(!args.username.is_empty());
+
+    let stream = connect(&args.address, &args.username).expect("Failed to connect to server");
+    println!("successfully connected to {}", args.address);
 }
 
 fn connect(address: &str, username: &str) -> Result<TcpStream, NetworkError> {
