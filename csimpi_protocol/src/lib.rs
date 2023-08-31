@@ -23,9 +23,9 @@ pub enum PacketError {
 }
 
 const PACKET_MAGIC: u32 = 0xCAFEBABE;
+const HEADER_SIZE: usize = core::mem::size_of::<PacketHeader>();
 
 pub fn parse_packet<'a>(buff: &'a [u8]) -> Result<PacketPayload<'a>, PacketError> {
-    const HEADER_SIZE: usize = core::mem::size_of::<PacketHeader>();
     if buff.len() < HEADER_SIZE {
         return Err(PacketError::InvalidSize);
     }
@@ -64,5 +64,38 @@ impl<'a> PacketPayload<'a> {
         };
 
         Ok(PacketPayload::Connect(username))
+    }
+
+    fn packet_type(&self) -> u32 {
+        match self {
+            Self::Connect(_) => 0,
+            Self::SendMessage(_) => 1,
+            Self::Message(_, _) => 2,
+        }
+    }
+
+    pub fn create_packet(&self) -> Vec<u8> {
+        let buff = match self {
+            Self::Connect(name) => Self::create_connect_packet(name),
+            _ => todo!(),
+        };
+
+        let header = unsafe { (buff.as_ptr() as *mut PacketHeader).as_mut() }.unwrap();
+
+        header.magic = PACKET_MAGIC;
+        header.packet_type = self.packet_type();
+
+        buff
+    }
+
+    fn create_connect_packet(name: &str) -> Vec<u8> {
+        assert!(name.len() < 256);
+        let mut buff = vec![0u8; HEADER_SIZE + name.len() + 1];
+        let payload_buff = &mut buff[HEADER_SIZE..];
+
+        payload_buff[0] = name.len() as u8;
+        payload_buff[1..].copy_from_slice(name.as_bytes());
+
+        buff
     }
 }

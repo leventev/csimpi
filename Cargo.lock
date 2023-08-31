@@ -5,6 +5,9 @@ version = 3
 [[package]]
 name = "csimpi_client"
 version = "0.1.0"
+dependencies = [
+ "csimpi_protocol",
+]
 
 [[package]]
 name = "csimpi_protocol"
