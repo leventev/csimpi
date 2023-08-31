@@ -1,4 +1,5 @@
-use std::str::from_utf8;
+use std::io::prelude::*;
+use std::{net::TcpStream, str::from_utf8};
 
 #[repr(C)]
 struct PacketHeader {
@@ -7,10 +8,11 @@ struct PacketHeader {
 }
 
 #[derive(Debug)]
-pub enum PacketPayload<'a> {
-    Connect(&'a str),
-    SendMessage(&'a str),
-    Message(&'a str, &'a str),
+pub enum PacketPayload {
+    Connect(String),
+    ConnectResponse(bool),
+    SendMessage(String),
+    Message(String, String),
 }
 
 #[derive(Debug)]
@@ -24,8 +26,22 @@ pub enum PacketError {
 
 const PACKET_MAGIC: u32 = 0xCAFEBABE;
 const HEADER_SIZE: usize = core::mem::size_of::<PacketHeader>();
+const MAX_PACKET_SIZE: usize = 1024;
 
-pub fn parse_packet<'a>(buff: &'a [u8]) -> Result<PacketPayload<'a>, PacketError> {
+const CONNECT_TYPE: u32 = 0;
+const CONNECT_RESPONSE_TYPE: u32 = 1;
+const CONNECT_SEND_MESSAGE: u32 = 2;
+const CONNECT_MESSAGE: u32 = 3;
+
+pub fn read_packet(stream: &mut TcpStream) -> Result<PacketPayload, PacketError> {
+    let mut buff = [0u8; MAX_PACKET_SIZE];
+    match stream.read(&mut buff[..]) {
+        Ok(read) => parse_packet(&buff[..read]),
+        Err(_) => Err(PacketError::FailedToReadPacket),
+    }
+}
+
+pub fn parse_packet(buff: &[u8]) -> Result<PacketPayload, PacketError> {
     if buff.len() < HEADER_SIZE {
         return Err(PacketError::InvalidSize);
     }
@@ -40,15 +56,16 @@ pub fn parse_packet<'a>(buff: &'a [u8]) -> Result<PacketPayload<'a>, PacketError
     PacketPayload::parse(header.packet_type, payload_buff)
 }
 
-impl<'a> PacketPayload<'a> {
-    fn parse(payload_type: u32, buff: &'a [u8]) -> Result<PacketPayload<'a>, PacketError> {
+impl PacketPayload {
+    fn parse(payload_type: u32, buff: &[u8]) -> Result<PacketPayload, PacketError> {
         match payload_type {
-            0 => Self::parse_connect(buff),
+            CONNECT_TYPE => Self::parse_connect(buff),
+            CONNECT_RESPONSE_TYPE => Self::parse_connect_response(buff),
             _ => Err(PacketError::InvalidPacketType),
         }
     }
 
-    fn parse_connect(buff: &'a [u8]) -> Result<PacketPayload<'a>, PacketError> {
+    fn parse_connect(buff: &[u8]) -> Result<PacketPayload, PacketError> {
         if buff.len() < 2 {
             return Err(PacketError::InvalidPayload);
         }
@@ -63,20 +80,32 @@ impl<'a> PacketPayload<'a> {
             Err(_) => return Err(PacketError::InvalidPayload),
         };
 
-        Ok(PacketPayload::Connect(username))
+        Ok(PacketPayload::Connect(username.to_string()))
+    }
+
+    fn parse_connect_response(buff: &[u8]) -> Result<PacketPayload, PacketError> {
+        if buff.len() != 1 {
+            return Err(PacketError::InvalidPayload);
+        }
+
+        let val: bool = buff[0] == 1;
+
+        Ok(PacketPayload::ConnectResponse(val))
     }
 
     fn packet_type(&self) -> u32 {
         match self {
             Self::Connect(_) => 0,
-            Self::SendMessage(_) => 1,
-            Self::Message(_, _) => 2,
+            Self::ConnectResponse(_) => 1,
+            Self::SendMessage(_) => 2,
+            Self::Message(_, _) => 3,
         }
     }
 
     pub fn create_packet(&self) -> Vec<u8> {
         let buff = match self {
             Self::Connect(name) => Self::create_connect_packet(name),
+            Self::ConnectResponse(success) => Self::create_connect_response_packet(*success),
             _ => todo!(),
         };
 
@@ -95,6 +124,15 @@ impl<'a> PacketPayload<'a> {
 
         payload_buff[0] = name.len() as u8;
         payload_buff[1..].copy_from_slice(name.as_bytes());
+
+        buff
+    }
+
+    fn create_connect_response_packet(success: bool) -> Vec<u8> {
+        let mut buff = vec![0u8; HEADER_SIZE + 1];
+        let payload_buff = &mut buff[HEADER_SIZE..];
+
+        payload_buff[0] = success.into();
 
         buff
     }
