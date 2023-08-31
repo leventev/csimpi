@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "csimpi_protocol",
+    "csimpi_client",
+    "csimpi_server"
+]
+resolver = "2"
